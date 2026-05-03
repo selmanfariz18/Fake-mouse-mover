@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const { execSync } = require('child_process');
+const os = require('os');
 
 let mainWindow;
 let moveInterval = null;
@@ -15,11 +16,17 @@ const MAX_MOVE = 500;   // maximum pixels (~13cm on 1080p screen)
 // Get current mouse position via xdotool
 function getCurrentMousePos() {
     try {
-        const output = execSync('xdotool getmouselocation').toString();
-        const xMatch = output.match(/x:(\d+)/);
-        const yMatch = output.match(/y:(\d+)/);
-        if (xMatch && yMatch) {
-            return { x: parseInt(xMatch[1]), y: parseInt(yMatch[1]) };
+        if (os.platform() === 'win32') {
+            const out = execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; $p = [System.Windows.Forms.Cursor]::Position; Write-Output \"$($p.X) $($p.Y)\""`).toString().trim();
+            const [x, y] = out.split(' ').map(Number);
+            return { x, y };
+        } else {
+            const output = execSync('xdotool getmouselocation').toString();
+            const xMatch = output.match(/x:(\d+)/);
+            const yMatch = output.match(/y:(\d+)/);
+            if (xMatch && yMatch) {
+                return { x: parseInt(xMatch[1]), y: parseInt(yMatch[1]) };
+            }
         }
     } catch (e) { }
     return { x: lastX, y: lastY };
@@ -29,31 +36,48 @@ function getCurrentMousePos() {
 function moveMouse() {
     try {
         const current = getCurrentMousePos();
+        const origin = { x: current.x, y: current.y };
 
-        // Random direction with guaranteed large distance (200-500px)
         const distance = MIN_MOVE + Math.floor(Math.random() * (MAX_MOVE - MIN_MOVE));
         const angle = Math.random() * 2 * Math.PI;
 
         let newX = Math.round(current.x + distance * Math.cos(angle));
         let newY = Math.round(current.y + distance * Math.sin(angle));
 
-        // Clamp to screen bounds with 50px padding
         newX = Math.max(50, Math.min(SCREEN_WIDTH - 50, newX));
         newY = Math.max(50, Math.min(SCREEN_HEIGHT - 50, newY));
 
-        console.log(`🖱️ ${current.x},${current.y} → ${newX},${newY} (${distance}px away)`);
+        console.log(`🖱️ Nudge → ${newX},${newY}`);
 
-        // Move smoothly using xdotool
-        execSync(`xdotool mousemove --sync ${newX} ${newY}`);
+        // Platform specific move
+        if (os.platform() === 'win32') {
+            // Windows — use PowerShell
+            execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${newX}, ${newY})"`);
+        } else if (os.platform() === 'darwin') {
+            // macOS — use cliclick (needs: brew install cliclick)
+            execSync(`cliclick m:${newX},${newY}`);
+        } else {
+            // Linux — xdotool
+            execSync(`xdotool mousemove --sync ${newX} ${newY}`);
+        }
 
-        lastX = newX;
-        lastY = newY;
+        // Return to origin after 1 second
+        setTimeout(() => {
+            if (os.platform() === 'win32') {
+                execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${origin.x}, ${origin.y})"`);
+            } else if (os.platform() === 'darwin') {
+                execSync(`cliclick m:${origin.x},${origin.y}`);
+            } else {
+                execSync(`xdotool mousemove --sync ${origin.x} ${origin.y}`);
+            }
+            console.log(`↩️ Returned to ${origin.x},${origin.y}`);
+        }, 1000);
 
         if (mainWindow) {
             mainWindow.webContents.send('mouse-moved', { x: newX, y: newY });
         }
     } catch (err) {
-        console.error('❌ xdotool move failed:', err.message);
+        console.error('❌ Move failed:', err.message);
     }
 }
 

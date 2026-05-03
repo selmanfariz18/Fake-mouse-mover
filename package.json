@@ -44,8 +44,7 @@
         },
         "nsis": {
             "oneClick": false,
-            "allowToChangeInstallationDirectory": true,
-            "compression": "store"
+            "allowToChangeInstallationDirectory": true
         }
     }
 }

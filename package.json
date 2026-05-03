@@ -1,6 +1,11 @@
 {
     "name": "mouse-mover",
     "version": "1.0.0",
+    "description": "Fake mouse mover to keep Teams status active",
+    "author": {
+        "name": "selmanfariz18",
+        "email": "salmanulfarizyka@gmail.com"
+    },
     "main": "main.js",
     "scripts": {
         "start": "electron . --no-sandbox --disable-gpu",
@@ -21,8 +26,7 @@
         ],
         "linux": {
             "target": [
-                "AppImage",
-                "deb"
+                "AppImage"
             ],
             "category": "Utility"
         },

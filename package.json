@@ -31,14 +31,21 @@
             "category": "Utility"
         },
         "win": {
-            "target": "nsis"
+            "target": {
+                "target": "nsis",
+                "arch": [
+                    "x64"
+                ]
+            },
+            "compression": "store"
         },
         "mac": {
             "target": "dmg"
         },
         "nsis": {
             "oneClick": false,
-            "allowToChangeInstallationDirectory": true
+            "allowToChangeInstallationDirectory": true,
+            "compression": "store"
         }
     }
 }

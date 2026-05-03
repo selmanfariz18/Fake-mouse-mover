@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     strategy:
       matrix:
@@ -28,21 +29,48 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build Electron app
-        run: npm run build -- --${{ matrix.platform }}
+      - name: Build Electron app (Linux)
+        if: matrix.platform == 'linux'
+        run: npm run build -- --linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
+      - name: Build Electron app (Windows)
+        if: matrix.platform == 'win'
+        run: npm run build -- --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # disable compression to avoid timeout
+          WIN_CSC_LINK: ''
+
+      - name: Build Electron app (Mac)
+        if: matrix.platform == 'mac'
+        run: npm run build -- --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifact
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
-          name: mouse-mover-${{ matrix.platform }}
-          path: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.AppImage
-            dist/*.deb
+          name: mouse-mover-linux
+          path: dist/*.AppImage
+
+      - name: Upload Windows artifact
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mouse-mover-win
+          path: dist/*.exe
+
+      - name: Upload Mac artifact
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mouse-mover-mac
+          path: dist/*.dmg  

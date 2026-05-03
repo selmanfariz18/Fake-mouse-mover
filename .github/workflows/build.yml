@@ -2,14 +2,13 @@ name: Build Mouse Mover
 
 on:
   push:
-    branches: [ main ]
-  release:
-    types: [ created ]
+    tags:
+      - 'v*'        # only trigger on version tags like v1.0.2
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     strategy:
       matrix:
@@ -36,39 +35,18 @@ jobs:
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
-        run: npm run build -- --linux
+        run: npm run build -- --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
-        run: npm run build -- --win
+        run: npm run build -- --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron app (Mac)
         if: matrix.platform == 'mac'
-        run: npm run build -- --mac
+        run: npm run build -- --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Linux artifact
-        if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mouse-mover-linux
-          path: dist/*.AppImage
-
-      - name: Upload Windows artifact
-        if: matrix.platform == 'win'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mouse-mover-win
-          path: dist/*.exe
-
-      - name: Upload Mac artifact
-        if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mouse-mover-mac
-          path: dist/*.dmg  

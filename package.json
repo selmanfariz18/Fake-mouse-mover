@@ -18,6 +18,11 @@
     "build": {
         "appId": "com.mousemover.app",
         "productName": "Mouse Mover",
+        "publish": {
+            "provider": "github",
+            "owner": "selmanfariz18",
+            "repo": "Fake-mouse-mover"
+        },
         "files": [
             "main.js",
             "preload.js",

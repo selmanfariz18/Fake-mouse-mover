@@ -5,34 +5,70 @@ const os = require('os');
 
 let mainWindow;
 let moveInterval = null;
-let lastX = 960;  // start from screen center
+let lastX = 960;
 let lastY = 540;
 
-const SCREEN_WIDTH = 1920;
-const SCREEN_HEIGHT = 1080;
-const MIN_MOVE = 200;   // minimum pixels (~5cm on 1080p screen)
-const MAX_MOVE = 500;   // maximum pixels (~13cm on 1080p screen)
+let SCREEN_WIDTH = 1920;
+let SCREEN_HEIGHT = 1080;
+const MIN_MOVE = 100;
+const MAX_MOVE = 300;
 
-// Get current mouse position via xdotool
+// Detect screen size per platform
+function detectScreenSize() {
+    try {
+        if (os.platform() === 'win32') {
+            const out = execSync(
+                'Get-CimInstance -ClassName Win32_VideoController | Select-Object -First 1 -ExpandProperty CurrentHorizontalResolution; Get-CimInstance -ClassName Win32_VideoController | Select-Object -First 1 -ExpandProperty CurrentVerticalResolution',
+                { shell: 'powershell.exe' }
+            ).toString().trim();
+            const lines = out.split('\n').map(l => parseInt(l.trim())).filter(n => !isNaN(n));
+            if (lines.length >= 2) {
+                SCREEN_WIDTH = lines[0];
+                SCREEN_HEIGHT = lines[1];
+            }
+        } else {
+            const out = execSync('xdotool getdisplaygeometry').toString().trim();
+            const parts = out.split(' ');
+            SCREEN_WIDTH = parseInt(parts[0]) || 1920;
+            SCREEN_HEIGHT = parseInt(parts[1]) || 1080;
+        }
+        console.log(`🖥️ Screen detected: ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`);
+    } catch (e) {
+        console.log(`🖥️ Using default screen size: ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`);
+    }
+}
+
+// Get current mouse position
 function getCurrentMousePos() {
     try {
         if (os.platform() === 'win32') {
-            const out = execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; $p = [System.Windows.Forms.Cursor]::Position; Write-Output \"$($p.X) $($p.Y)\""`).toString().trim();
-            const [x, y] = out.split(' ').map(Number);
-            return { x, y };
+            const out = execSync(
+                'Add-Type -AssemblyName System.Windows.Forms; $p = [System.Windows.Forms.Cursor]::Position; Write-Output ($p.X); Write-Output ($p.Y)',
+                { shell: 'powershell.exe' }
+            ).toString().trim();
+            const lines = out.split('\n').map(l => parseInt(l.trim())).filter(n => !isNaN(n));
+            if (lines.length >= 2) {
+                lastX = lines[0];
+                lastY = lines[1];
+                return { x: lines[0], y: lines[1] };
+            }
         } else {
             const output = execSync('xdotool getmouselocation').toString();
             const xMatch = output.match(/x:(\d+)/);
             const yMatch = output.match(/y:(\d+)/);
             if (xMatch && yMatch) {
-                return { x: parseInt(xMatch[1]), y: parseInt(yMatch[1]) };
+                lastX = parseInt(xMatch[1]);
+                lastY = parseInt(yMatch[1]);
+                return { x: lastX, y: lastY };
             }
         }
-    } catch (e) { }
+    } catch (e) {
+        console.error('❌ getMousePos failed:', e.message);
+    }
     return { x: lastX, y: lastY };
 }
 
-// Move mouse a visible distance from current position
+// Move mouse
 function moveMouse() {
     try {
         const current = getCurrentMousePos();
@@ -47,35 +83,43 @@ function moveMouse() {
         newX = Math.max(50, Math.min(SCREEN_WIDTH - 50, newX));
         newY = Math.max(50, Math.min(SCREEN_HEIGHT - 50, newY));
 
-        console.log(`🖱️ Nudge → ${newX},${newY}`);
+        console.log(`🖱️ ${current.x},${current.y} → ${newX},${newY} (${distance}px)`);
 
-        // Platform specific move
+        // Move to new position
         if (os.platform() === 'win32') {
-            // Windows — use PowerShell
-            execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${newX}, ${newY})"`);
+            execSync(
+                `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${newX}, ${newY})`,
+                { shell: 'powershell.exe' }
+            );
         } else if (os.platform() === 'darwin') {
-            // macOS — use cliclick (needs: brew install cliclick)
             execSync(`cliclick m:${newX},${newY}`);
         } else {
-            // Linux — xdotool
             execSync(`xdotool mousemove --sync ${newX} ${newY}`);
         }
 
         // Return to origin after 1 second
         setTimeout(() => {
-            if (os.platform() === 'win32') {
-                execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${origin.x}, ${origin.y})"`);
-            } else if (os.platform() === 'darwin') {
-                execSync(`cliclick m:${origin.x},${origin.y}`);
-            } else {
-                execSync(`xdotool mousemove --sync ${origin.x} ${origin.y}`);
+            try {
+                if (os.platform() === 'win32') {
+                    execSync(
+                        `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${origin.x}, ${origin.y})`,
+                        { shell: 'powershell.exe' }
+                    );
+                } else if (os.platform() === 'darwin') {
+                    execSync(`cliclick m:${origin.x},${origin.y}`);
+                } else {
+                    execSync(`xdotool mousemove --sync ${origin.x} ${origin.y}`);
+                }
+                console.log(`↩️ Returned to ${origin.x},${origin.y}`);
+            } catch (e) {
+                console.error('↩️ Return failed:', e.message);
             }
-            console.log(`↩️ Returned to ${origin.x},${origin.y}`);
         }, 1000);
 
         if (mainWindow) {
             mainWindow.webContents.send('mouse-moved', { x: newX, y: newY });
         }
+
     } catch (err) {
         console.error('❌ Move failed:', err.message);
     }
@@ -84,8 +128,8 @@ function moveMouse() {
 function startMoving() {
     console.log('▶ startMoving called');
     if (moveInterval) return;
-    moveMouse(); // immediate first move
-    moveInterval = setInterval(moveMouse, 10000);
+    moveMouse();
+    moveInterval = setInterval(moveMouse, 10000); // every 60 seconds
     mainWindow.webContents.send('status-update', 'running');
 }
 
@@ -111,16 +155,15 @@ function createWindow() {
         },
     });
     mainWindow.loadFile('renderer/index.html');
-    // mainWindow.webContents.openDevTools(); // remove this after testing
 }
 
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 
 app.whenReady().then(() => {
+    detectScreenSize();
     createWindow();
     globalShortcut.register('Escape', () => stopMoving());
-    // globalShortcut.register('Backspace', () => stopMoving());
 });
 
 app.on('will-quit', () => {

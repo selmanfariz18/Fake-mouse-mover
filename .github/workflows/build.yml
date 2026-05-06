@@ -71,3 +71,27 @@ jobs:
         with:
           name: mouse-mover-mac
           path: dist/*.dmg
+
+      - name: Attach Linux to Release
+        if: matrix.platform == 'linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach Windows to Release
+        if: matrix.platform == 'win'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach Mac to Release
+        if: matrix.platform == 'mac'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -116,7 +116,7 @@ function moveMouse() {
             }
         }, 1000);
 
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('mouse-moved', { x: newX, y: newY });
         }
 
@@ -129,8 +129,10 @@ function startMoving() {
     console.log('▶ startMoving called');
     if (moveInterval) return;
     moveMouse();
-    moveInterval = setInterval(moveMouse, 10000); // every 60 seconds
-    mainWindow.webContents.send('status-update', 'running');
+    moveInterval = setInterval(moveMouse, 10000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('status-update', 'running');
+    }
 }
 
 function stopMoving() {
@@ -138,7 +140,8 @@ function stopMoving() {
         clearInterval(moveInterval);
         moveInterval = null;
     }
-    if (mainWindow) {
+    // Check window exists and is not destroyed before sending
+    if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('status-update', 'stopped');
     }
 }
@@ -155,6 +158,11 @@ function createWindow() {
         },
     });
     mainWindow.loadFile('renderer/index.html');
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+        stopMoving();
+    });
 }
 
 app.commandLine.appendSwitch('disable-gpu');

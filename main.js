@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { execSync } = require('child_process');
 const os = require('os');
 
@@ -12,6 +13,18 @@ let SCREEN_WIDTH = 1920;
 let SCREEN_HEIGHT = 1080;
 const MIN_MOVE = 100;
 const MAX_MOVE = 300;
+
+let pomodoroInterval = null;
+let pomodoroPhase = null; // 'work' | 'break' | null (idle)
+let pomodoroRemaining = 0; // seconds left in current phase
+let pomodoroWorkMin = 45;
+let pomodoroBreakMin = 5;
+let pomodoroPaused = false;
+
+const DAILY_GOAL_SECONDS = 8 * 60 * 60; // 8-hour work day
+let dailyTotalsFile = null; // resolved once app is ready
+let dailyTotalDate = null;
+let dailyTotalSeconds = 0;
 
 // Detect screen size per platform
 function detectScreenSize() {
@@ -146,9 +159,130 @@ function stopMoving() {
     }
 }
 
+// --- Pomodoro timer ---
+
+function notify(title, body) {
+    if (Notification.isSupported()) {
+        new Notification({ title, body }).show();
+    }
+}
+
+function getTodayString() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function loadDailyTotal() {
+    dailyTotalDate = getTodayString();
+    dailyTotalSeconds = 0;
+    try {
+        const data = JSON.parse(fs.readFileSync(dailyTotalsFile, 'utf-8'));
+        if (data.date === dailyTotalDate) {
+            dailyTotalSeconds = data.totalSeconds || 0;
+        }
+    } catch (e) {
+        // No file yet, or unreadable — start the day at 0.
+    }
+}
+
+function saveDailyTotal() {
+    try {
+        fs.writeFileSync(dailyTotalsFile, JSON.stringify({ date: dailyTotalDate, totalSeconds: dailyTotalSeconds }));
+    } catch (e) {
+        console.error('❌ Failed to save pomodoro daily total:', e.message);
+    }
+}
+
+// Rolls the counter over to 0 if the calendar day has changed since it was loaded.
+function ensureCurrentDay() {
+    const today = getTodayString();
+    if (today !== dailyTotalDate) {
+        dailyTotalDate = today;
+        dailyTotalSeconds = 0;
+        saveDailyTotal();
+    }
+}
+
+function sendPomodoroUpdate() {
+    ensureCurrentDay();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('pomodoro-update', {
+            phase: pomodoroPhase,
+            remaining: pomodoroRemaining,
+            workMin: pomodoroWorkMin,
+            breakMin: pomodoroBreakMin,
+            paused: pomodoroPaused,
+            dailyTotalSeconds,
+            dailyGoalSeconds: DAILY_GOAL_SECONDS,
+        });
+    }
+}
+
+function pomodoroTick() {
+    ensureCurrentDay();
+    pomodoroRemaining--;
+    dailyTotalSeconds++;
+    if (dailyTotalSeconds % 10 === 0) saveDailyTotal();
+
+    if (pomodoroRemaining <= 0) {
+        if (pomodoroPhase === 'work') {
+            notify('Pomodoro — Work session done', `Time for a ${pomodoroBreakMin} minute break.`);
+            pomodoroPhase = 'break';
+            pomodoroRemaining = pomodoroBreakMin * 60;
+        } else {
+            notify('Pomodoro — Break over', `Back to work for ${pomodoroWorkMin} minutes.`);
+            pomodoroPhase = 'work';
+            pomodoroRemaining = pomodoroWorkMin * 60;
+        }
+    }
+
+    sendPomodoroUpdate();
+}
+
+function startPomodoro(workMin, breakMin) {
+    if (pomodoroInterval || pomodoroPhase) return;
+
+    pomodoroWorkMin = Math.max(1, Math.floor(workMin) || 45);
+    pomodoroBreakMin = Math.max(1, Math.floor(breakMin) || 5);
+    pomodoroPhase = 'work';
+    pomodoroRemaining = pomodoroWorkMin * 60;
+    pomodoroPaused = false;
+
+    sendPomodoroUpdate();
+    pomodoroInterval = setInterval(pomodoroTick, 1000);
+}
+
+function pausePomodoro() {
+    if (!pomodoroInterval) return;
+    clearInterval(pomodoroInterval);
+    pomodoroInterval = null;
+    pomodoroPaused = true;
+    saveDailyTotal();
+    sendPomodoroUpdate();
+}
+
+function resumePomodoro() {
+    if (pomodoroInterval || !pomodoroPhase || !pomodoroPaused) return;
+    pomodoroPaused = false;
+    pomodoroInterval = setInterval(pomodoroTick, 1000);
+    sendPomodoroUpdate();
+}
+
+function stopPomodoro() {
+    if (pomodoroInterval) {
+        clearInterval(pomodoroInterval);
+        pomodoroInterval = null;
+    }
+    pomodoroPhase = null;
+    pomodoroRemaining = 0;
+    pomodoroPaused = false;
+    saveDailyTotal();
+    sendPomodoroUpdate();
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 420,
+        width: 440,
         height: 520,
         resizable: false,
         webPreferences: {
@@ -159,16 +293,27 @@ function createWindow() {
     });
     mainWindow.loadFile('renderer/index.html');
 
+    mainWindow.webContents.on('did-finish-load', () => {
+        sendPomodoroUpdate();
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
         stopMoving();
+        stopPomodoro();
     });
 }
 
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 
+if (os.platform() === 'win32') {
+    app.setAppUserModelId('com.mousemover.app');
+}
+
 app.whenReady().then(() => {
+    dailyTotalsFile = path.join(app.getPath('userData'), 'pomodoro-daily-total.json');
+    loadDailyTotal();
     detectScreenSize();
     createWindow();
     globalShortcut.register('Escape', () => stopMoving());
@@ -177,6 +322,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     stopMoving();
+    stopPomodoro();
 });
 
 app.on('window-all-closed', () => {
@@ -185,3 +331,8 @@ app.on('window-all-closed', () => {
 
 ipcMain.on('start-moving', () => startMoving());
 ipcMain.on('stop-moving', () => stopMoving());
+
+ipcMain.on('pomodoro-start', (event, { workMin, breakMin } = {}) => startPomodoro(workMin, breakMin));
+ipcMain.on('pomodoro-pause', () => pausePomodoro());
+ipcMain.on('pomodoro-resume', () => resumePomodoro());
+ipcMain.on('pomodoro-stop', () => stopPomodoro());

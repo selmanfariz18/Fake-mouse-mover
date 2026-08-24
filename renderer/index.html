@@ -19,14 +19,72 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 24px;
+            justify-content: flex-start;
+            padding-top: 32px;
+            gap: 20px;
         }
 
         h1 {
             font-size: 1.6rem;
             letter-spacing: 2px;
             color: #a78bfa;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 6px;
+            background: #1e1e2e;
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid #2a2a3e;
+        }
+
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: transparent;
+            color: #888;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .tab-btn.active {
+            background: #2a2a3e;
+            color: #fff;
+        }
+
+        .tab-btn:hover:not(.active) {
+            color: #ccc;
+        }
+
+        .tab-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: transparent;
+            transition: background 0.3s;
+        }
+
+        .tab-dot.on {
+            background: #22c55e;
+        }
+
+        .tab-dot.paused {
+            background: #f59e0b;
+        }
+
+        .tab-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 22px;
+        }
+
+        .tab-panel[hidden] {
+            display: none;
         }
 
         .status-badge {
@@ -52,9 +110,99 @@
             color: #aaa;
         }
 
-        .btn-row {
+        .status-badge.break {
+            background: #1e3a5f;
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+
+        .status-badge.paused {
+            background: #78350f;
+            border-color: #f59e0b;
+            color: #fbbf24;
+        }
+
+        .pomodoro-settings {
             display: flex;
             gap: 16px;
+        }
+
+        .pomodoro-settings label {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: #888;
+            text-align: center;
+        }
+
+        .pomodoro-settings input {
+            width: 70px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #1e1e2e;
+            color: #fff;
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .pomodoro-settings input:disabled {
+            opacity: 0.5;
+        }
+
+        .pomodoro-timer {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #a78bfa;
+            letter-spacing: 1px;
+        }
+
+        .daily-total-wrap {
+            width: 260px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .daily-total-label {
+            font-size: 0.8rem;
+            color: #888;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .daily-total-label.goal-met {
+            color: #22c55e;
+        }
+
+        .daily-progress-track {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            background: #1e1e2e;
+            border: 1px solid #2a2a3e;
+            overflow: hidden;
+        }
+
+        .daily-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #7c3aed, #a78bfa);
+            border-radius: 999px;
+            transition: width 0.3s;
+        }
+
+        .daily-progress-fill.goal-met {
+            background: linear-gradient(90deg, #16a34a, #22c55e);
+        }
+
+        .btn-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 14px;
         }
 
         button {
@@ -76,21 +224,39 @@
             cursor: not-allowed;
         }
 
-        #startBtn {
+        .btn-compact {
+            padding: 10px 20px;
+            font-size: 0.9rem;
+        }
+
+        #startBtn,
+        #pomodoroStartBtn {
             background: #7c3aed;
             color: #fff;
         }
 
-        #startBtn:hover:not(:disabled) {
+        #startBtn:hover:not(:disabled),
+        #pomodoroStartBtn:hover:not(:disabled) {
             background: #6d28d9;
         }
 
-        #stopBtn {
+        #pomodoroPauseBtn {
+            background: #d97706;
+            color: #fff;
+        }
+
+        #pomodoroPauseBtn:hover:not(:disabled) {
+            background: #b45309;
+        }
+
+        #stopBtn,
+        #pomodoroStopBtn {
             background: #dc2626;
             color: #fff;
         }
 
-        #stopBtn:hover:not(:disabled) {
+        #stopBtn:hover:not(:disabled),
+        #pomodoroStopBtn:hover:not(:disabled) {
             background: #b91c1c;
         }
 
@@ -117,19 +283,60 @@
 <body>
     <h1>🖱️ Mouse Mover</h1>
 
-    <div class="status-badge stopped" id="statusBadge">● STOPPED</div>
-
-    <div class="btn-row">
-        <button id="startBtn">▶ Start</button>
-        <button id="stopBtn" disabled>■ Stop</button>
+    <div class="tabs">
+        <button class="tab-btn active" id="tabBtnMouse">
+            Mouse Mover <span class="tab-dot" id="mouseDot"></span>
+        </button>
+        <button class="tab-btn" id="tabBtnPomodoro">
+            🍅 Pomodoro <span class="tab-dot" id="pomodoroDot"></span>
+        </button>
     </div>
 
-    <div class="coords" id="coords">—</div>
+    <section class="tab-panel" id="panelMouse">
+        <div class="status-badge stopped" id="statusBadge">● STOPPED</div>
 
-    <div class="info-box">
-        Moves mouse randomly every <strong>10 seconds</strong><br />
-        Press <kbd>ESC</kbd> to stop anytime
-    </div>
+        <div class="btn-row">
+            <button id="startBtn">▶ Start</button>
+            <button id="stopBtn" disabled>■ Stop</button>
+        </div>
+
+        <div class="coords" id="coords">—</div>
+
+        <div class="info-box">
+            Moves mouse randomly every <strong>10 seconds</strong><br />
+            Press <kbd>ESC</kbd> to stop anytime
+        </div>
+    </section>
+
+    <section class="tab-panel" id="panelPomodoro" hidden>
+        <div class="pomodoro-settings">
+            <label>
+                Work (min)
+                <input type="number" id="workMinInput" min="1" value="45" />
+            </label>
+            <label>
+                Break (min)
+                <input type="number" id="breakMinInput" min="1" value="5" />
+            </label>
+        </div>
+
+        <div class="status-badge stopped" id="pomodoroBadge">● IDLE</div>
+
+        <div class="pomodoro-timer" id="pomodoroTimer">--:--</div>
+
+        <div class="btn-row">
+            <button id="pomodoroStartBtn" class="btn-compact">▶ Start</button>
+            <button id="pomodoroPauseBtn" class="btn-compact" disabled>⏸ Pause</button>
+            <button id="pomodoroStopBtn" class="btn-compact" disabled>■ Stop</button>
+        </div>
+
+        <div class="daily-total-wrap">
+            <div class="daily-total-label" id="dailyTotalLabel">Today: 0h 00m / 8h 00m</div>
+            <div class="daily-progress-track">
+                <div class="daily-progress-fill" id="dailyProgressFill"></div>
+            </div>
+        </div>
+    </section>
 
     <script src="app.js"></script>
 </body>
